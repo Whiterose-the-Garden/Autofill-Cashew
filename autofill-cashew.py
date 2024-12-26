@@ -128,15 +128,12 @@ def parse_scotia_statement(soup, oai_client, category_cache):
     # Scotiabank can have e.g. `0:53 am`...
     if date_str[0] == "0":
         date_str = "12" + date_str[1:]
-    print(date_str)
 
     return {
         # Remove `$` at the front.
         "amount": "-" + match.group(1)[1:],
         "title": match.group(2),
-        "date": get_date(date_str),
         "category": get_category(match.group(2), oai_client, category_cache),
-        "account": get_account(match.group(3)),
     }
 
 
@@ -168,9 +165,7 @@ def send_populating_message(processed_transactions):
         "transactions": processed_transactions
     }
     json_str = json.dumps(json_format)
-    print(json.dumps(json_format, indent=4))
     url = f"{CASHEW_ROUTE}/addTransaction?JSON={quote(json_str)}"
-    print(url)
     os.system(f"osascript {SCRIPT_PATH} {os.environ['PHONE']} {url}")
     
 
@@ -263,7 +258,6 @@ def load_config():
     if Path(CONFIG_PATH).is_file() and os.stat(CONFIG_PATH).st_size != 0:
         with open(CONFIG_PATH, "r") as f:
             config = toml.load(f)
-            print(config)
         PHONE = config.get("PHONE") or PHONE
         OPENAI_API_KEY = config.get("OPENAI_API_KEY") or OPENAI_API_KEY
         CACHE_PATH = config.get("CACHE_PATH") or CACHE_PATH
@@ -318,7 +312,7 @@ def main():
         )
         results = (
             service.users().messages()
-                    .list(userId="me", q=query, maxResults=10)
+                    .list(userId="me", q=query, maxResults=5)
                     .execute()
                     .get("messages", [])
         )
@@ -353,7 +347,7 @@ def main():
             save_cache(last_seen_id, category_cache)
 
     except HttpError as error:
-        print(f"An error occured: {error}")
+        error(f"An error occured: {error}")
 
 if __name__ == "__main__":
     main()
