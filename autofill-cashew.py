@@ -41,10 +41,11 @@ BANK_TO_EMAIL = {
     Bank.RBC: "",
 }
 
-CONFIG_PATH = "config.toml"
+CONFIG_PATH = os.environ.get("CONFIG_PATH")
 CATEGORY_LIST = None
 CACHE_PATH = None
 ACCOUNT_NUMBER_TO_CASHEW_ACCOUNT = {}
+PHONE = None
 
 CASHEW_ROUTE = "https://cashewapp.web.app"
 
@@ -156,17 +157,12 @@ def warn(*args, **kwargs):
 # From: https://medium.com/@jameskabbes/sending-imessages-with-python-on-a-mac-b77b7dd6e371
 def send_populating_message(processed_transactions):
     SCRIPT_PATH="send_imessage.applescript"
-    phone = os.environ.get("PHONE")
-    if not phone:
-        warn("Phone number has not been set!")
-        raise SystemExit
-
     json_format = {
         "transactions": processed_transactions
     }
     json_str = json.dumps(json_format)
     url = f"{CASHEW_ROUTE}/addTransaction?JSON={quote(json_str)}"
-    os.system(f"osascript {SCRIPT_PATH} {os.environ['PHONE']} {url}")
+    os.system(f"osascript {SCRIPT_PATH} {PHONE} {url}")
     
 
 def get_parser(msg_str):
@@ -333,7 +329,7 @@ def main():
             # https://developers.google.com/gmail/api/reference/quota). Sleep
             # here so that you don't reach that limit. We might be spending
             # enough time doing actual work in each iteration that this sleep
-            # unnecessary, and inaccuracy of sleep doesn't make us hit the 
+            # is unnecessary, or inaccuracy of sleep doesn't make us hit the
             # rate limit.
             sleep(0.02)
             cashew_dict = body_to_cashew_dict(msg["body"], bank, oai_client,

@@ -3,4 +3,5 @@
 *.toml
 TODO
 *.log
-
+*.sh
+*.plist
