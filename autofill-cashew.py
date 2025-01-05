@@ -20,6 +20,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from openai import OpenAI
 from datetime import datetime
+from dateutil import parser
 
 # https://medium.com/@jameskabbes/sending-imessages-with-python-on-a-mac-b77b7dd6e371
 # os.system('osascript <ScriptPath> <Argument1> ... <ArgumentN>')
@@ -72,15 +73,11 @@ def get_account(acc):
     return ACCOUNT_NUMBER_TO_CASHEW_ACCOUNT[acc]
 
 # Format the date and time to "MM/dd/yyyy HH:mm:ss"
-# TODO: This should really use the timestamp of either whatever
-# was reported by email, or the date/time the email was sent.
-def get_date(date_str):
-    dt = datetime.now()
-    if date_str[-2:] in ("am","pm"):
-        t = datetime.strptime(date_str.upper(), "%I:%M %p")
+def get_datetime(time_str, dt):
+    if time_str[-2:] in ("am","pm"):
+        t = datetime.strptime(time_str.upper(), "%I:%M %p")
         dt = dt.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
     return dt.strftime("%m/%d/%Y %H:%M:%S")
-
 
 def get_category(name, oai_client, category_cache):
 
@@ -105,7 +102,7 @@ def get_category(name, oai_client, category_cache):
 
     return category_cache[name]
      
-def parse_scotia_statement(soup, oai_client, category_cache):
+def parse_scotia_statement(soup, oai_client, category_cache, date):
     # For an example, see "Downloads/Authorization on your credit card outside of Canada.eml CBRE Limited Transaction Approved.eml" 
     SB_MATCH = "There was an authorization"
     pattern = r"(\$\d+\.\d{2}) at (.+) on account (\d{4}\*+\d{3}\*+) at (\d{1,2}:\d{2} [ap]m)"
@@ -125,14 +122,21 @@ def parse_scotia_statement(soup, oai_client, category_cache):
 
     match = re.search(pattern, transaction_text)
 
-    date_str = match.group(4)
+    time_str = match.group(4)
     # Scotiabank can have e.g. `0:53 am`...
-    if date_str[0] == "0":
-        date_str = "12" + date_str[1:]
+    if time_str[0] == "0":
+        time_str = "12" + time_str[1:]
 
+    # There seems to be a bug with iMessage such that (some) periods make the
+    # deep link not be interpreted as a link, and thus cannot be conveniently
+    # tapped on. Convert all periods to its url encoding "%2E".
+    # TODO: Note that urllib.parse.quote will never replace `.`; is there a
+    # url encoding function that will?
+    # The [1:] removes `$` at the front.
+    amount = "-" + "%2E".join(match.group(1)[1:].split("."))
     return {
-        # Remove `$` at the front.
-        "amount": "-" + match.group(1)[1:],
+        "date": get_datetime(time_str, date),
+        "amount": amount,
         "title": match.group(2),
         "category": get_category(match.group(2), oai_client, category_cache),
     }
@@ -149,56 +153,42 @@ def parse_rbc_statement(str):
 
 # Read https://stackoverflow.com/questions/24745006/gmail-api-parse-message-content-base64-decoding-with-javascript to see why we need to do these replacements.
 
-# TODO: Log certain strings in a file for future debugging
 def warn(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
-
 
 # From: https://medium.com/@jameskabbes/sending-imessages-with-python-on-a-mac-b77b7dd6e371
 def send_populating_message(processed_transactions):
     SCRIPT_PATH="send_imessage.applescript"
     MAX_MESSAGES = 3
-    start = end = 0
-    while end < len(processed_transactions):
-        end += MAX_MESSAGES
-        json_format = {
-            "transactions": processed_transactions[start:end]
-        }
-        json_str = json.dumps(json_format)
-        url = f"{CASHEW_ROUTE}/addTransaction?JSON={quote(json_str)}"
-        os.system(f"osascript {SCRIPT_PATH} {PHONE} {url}")
-        start = end
-    
+    json_format = {
+        "transactions": processed_transactions
+    }
+    json_str = json.dumps(json_format)
+    url = f"{CASHEW_ROUTE}/addTransaction?JSON={quote(json_str)}"
+    os.system(f"osascript {SCRIPT_PATH} {PHONE} {url}")
 
-def get_parser(msg_str):
 
-    for header in msg_str["header"]:
+def get_date(headers):
+    for h in headers:
 
-        sender = header.get("name")
-        if sender != "From":
+        name = h.get("name")
+        if name != "Date":
             continue
 
-        if sender not in EMAIL_TO_PARSER:
-            warn(f"Cannot find a parser for email `{sender}`.")
-            continue
+        return parser.parse(h.get("value"))
 
-        return EMAIL_TO_PARSER[sender]
-
-    warn(f"DID NOT FIND ANY PARSER FOR SENDER!")
-
-
+    return datetime.now()
 
 # for p in soup.find_all('p'):
     # if p.text[:len(SB_MATCH)] != SB_MATCH:
-        # $43.62 at MANGO on account at 2:51 pm ET 
-
+        # $43.62 at MANGO on account at 2:51 pm ET
 # Parse a gmail message "body" to dictionary form as required for Cashew
-def body_to_cashew_dict(body, bank, oai_client, category_cache):
+def body_to_cashew_dict(body, bank, oai_client, category_cache, date):
     email_body = b64decode(body["data"].replace('-', '+').replace('_','/'))
     soup = BeautifulSoup(email_body, "html.parser")
     match bank:
         case Bank.SB:
-            return parse_scotia_statement(soup, oai_client, category_cache)
+            return parse_scotia_statement(soup, oai_client, category_cache, date)
         case _:
             warn(f"Given Bank is unsupported: {bank} (should be one of {BANK_TO_EMAIL.keys()})")
     
@@ -277,7 +267,6 @@ def load_config():
 
 # Given a header list, figure out which bank it came from
 def get_bank(headers):
-
     pair = []
     for h in headers:
         if "name" not in h or "value" not in h:
@@ -297,7 +286,6 @@ def get_bank(headers):
     return pair[0][0]
 
 
-# TODO: Config file, read and populate instead as well as default values
 def main():
 
     creds = authenticate()
@@ -313,7 +301,7 @@ def main():
         )
         results = (
             service.users().messages()
-                    .list(userId="me", q=query, maxResults=20)
+                    .list(userId="me", q=query, maxResults=50)
                     .execute()
                     .get("messages", [])
         )
@@ -329,6 +317,7 @@ def main():
                                                     .execute()["payload"]
             )
             bank = get_bank(msg["headers"])
+            date = get_date(msg["headers"])
             
             # Gmail rate limits messages.get() to 50 queries per second (See
             # https://developers.google.com/gmail/api/reference/quota). Sleep
@@ -336,9 +325,9 @@ def main():
             # enough time doing actual work in each iteration that this sleep
             # is unnecessary, or inaccuracy of sleep doesn't make us hit the
             # rate limit.
-            sleep(0.02)
+            sleep(0.01)
             cashew_dict = body_to_cashew_dict(msg["body"], bank, oai_client,
-                                              category_cache)
+                                              category_cache, date)
 
             # The email may not contain transaction information.
             if cashew_dict:
