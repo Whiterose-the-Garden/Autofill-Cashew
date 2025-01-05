@@ -157,12 +157,17 @@ def warn(*args, **kwargs):
 # From: https://medium.com/@jameskabbes/sending-imessages-with-python-on-a-mac-b77b7dd6e371
 def send_populating_message(processed_transactions):
     SCRIPT_PATH="send_imessage.applescript"
-    json_format = {
-        "transactions": processed_transactions
-    }
-    json_str = json.dumps(json_format)
-    url = f"{CASHEW_ROUTE}/addTransaction?JSON={quote(json_str)}"
-    os.system(f"osascript {SCRIPT_PATH} {PHONE} {url}")
+    MAX_MESSAGES = 3
+    start = end = 0
+    while end < len(processed_transactions):
+        end += MAX_MESSAGES
+        json_format = {
+            "transactions": processed_transactions[start:end]
+        }
+        json_str = json.dumps(json_format)
+        url = f"{CASHEW_ROUTE}/addTransaction?JSON={quote(json_str)}"
+        os.system(f"osascript {SCRIPT_PATH} {PHONE} {url}")
+        start = end
     
 
 def get_parser(msg_str):
@@ -308,7 +313,7 @@ def main():
         )
         results = (
             service.users().messages()
-                    .list(userId="me", q=query, maxResults=5)
+                    .list(userId="me", q=query, maxResults=20)
                     .execute()
                     .get("messages", [])
         )
@@ -334,7 +339,10 @@ def main():
             sleep(0.02)
             cashew_dict = body_to_cashew_dict(msg["body"], bank, oai_client,
                                               category_cache)
-            processed_transactions.append(cashew_dict)
+
+            # The email may not contain transaction information.
+            if cashew_dict:
+                processed_transactions.append(cashew_dict)
 
         if processed_transactions:
             send_populating_message(processed_transactions)
