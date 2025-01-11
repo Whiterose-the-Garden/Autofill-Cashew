@@ -19,7 +19,6 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from openai import OpenAI
-from datetime import datetime
 from dateutil import parser
 
 # https://medium.com/@jameskabbes/sending-imessages-with-python-on-a-mac-b77b7dd6e371
