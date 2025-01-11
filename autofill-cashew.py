@@ -1,5 +1,3 @@
-# https://github.com/googleworkspace/python-samples/tree/master/gmail/quickstart
-
 import os
 import toml
 from datetime import datetime
@@ -20,9 +18,6 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from openai import OpenAI
 from dateutil import parser
-
-# https://medium.com/@jameskabbes/sending-imessages-with-python-on-a-mac-b77b7dd6e371
-# os.system('osascript <ScriptPath> <Argument1> ... <ArgumentN>')
 
 def error(*args, **kwargs):
     warn(*args, **kwargs)
@@ -53,6 +48,7 @@ CASHEW_ROUTE = "https://cashewapp.web.app"
 TOKEN_PATH="token.json"
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
+# https://github.com/googleworkspace/python-samples/tree/master/gmail/quickstart
 def authenticate():
     creds = None
     if os.path.exists(TOKEN_PATH):
@@ -150,12 +146,9 @@ def parse_amex_statement(str):
 def parse_rbc_statement(str):
     pass
 
-# Read https://stackoverflow.com/questions/24745006/gmail-api-parse-message-content-base64-decoding-with-javascript to see why we need to do these replacements.
-
 def warn(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
-# From: https://medium.com/@jameskabbes/sending-imessages-with-python-on-a-mac-b77b7dd6e371
 def send_populating_message(processed_transactions):
     SCRIPT_PATH="send_imessage.applescript"
     MAX_MESSAGES = 3
@@ -166,7 +159,7 @@ def send_populating_message(processed_transactions):
     url = f"{CASHEW_ROUTE}/addTransaction?JSON={quote(json_str)}"
     os.system(f"osascript {SCRIPT_PATH} {PHONE} {url}")
 
-
+# Return datetime object of the time the email was sent.
 def get_date(headers):
     for h in headers:
 
@@ -178,9 +171,6 @@ def get_date(headers):
 
     return datetime.now()
 
-# for p in soup.find_all('p'):
-    # if p.text[:len(SB_MATCH)] != SB_MATCH:
-        # $43.62 at MANGO on account at 2:51 pm ET
 # Parse a gmail message "body" to dictionary form as required for Cashew
 def body_to_cashew_dict(body, bank, oai_client, category_cache, date):
     email_body = b64decode(body["data"].replace('-', '+').replace('_','/'))
